@@ -21,14 +21,19 @@ connection test would call).
 
 ## Resolution
 
-RESOLVED from audit (ticket 01) + AudioMuse research (ticket 02) + brief §21:
+RESOLVED after the corrected live audit (ticket 01) — fnack main v0.3.21
+**does** support manifest `actions`: `PluginManifest.actions` is a real list
+(each `{id, label}` renders as a button in the settings modal and maps to a
+snake_cased method on the plugin instance), dispatched via
+`POST /api/plugins/<id>/action/<action_id>` and guarded so only declared
+actions run.
 
-- fnack core (v0.3.1) has **no manifest `actions` mechanism** — nothing
-  dispatches manifest actions to plugin methods, and the manifest parser
-  rejects unknown keys. Adding one would require a core API addition, which is
-  out of scope for this plugin upgrade and not required by the brief.
-- Decision: **do not add a "Test AudioMuse-AI connection" action in v1.**
-  Connection verification is covered by the failure/fallback behavior of
-  ticket 09 (soft fail, documented) plus the automated mock tests of ticket
-  15. If a manual test UX is wanted later, revisit only after fnack core
-  supports manifest actions.
+Decision: **add an optional "Test AudioMuse-AI connection" action** —
+`{"id": "test-audiomuse-connection", "label": "Test AudioMuse-AI connection"}`
+mapping to a plugin method that performs the same reachability call as ticket
+09 (GET {base}/api/similar_tracks with a probe, or /api/health-equivalent per
+ticket 02), returning a boolean + message shown in the settings modal. It is
+optional (brief §21), fails soft, never blocks plugin load, and only appears
+when AudioMuse settings are relevant (settings_schema still renders it; the
+method no-ops/returns an explanatory message when disabled). No second UI
+surface is created.

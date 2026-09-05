@@ -2,113 +2,128 @@
 
 Ticket: 01-audit-fnack-architecture (research)
 Status: resolved
-Sources: fnack `origin/main` @ `4962657` (v0.3.1) via `git show origin/main:<path>`;
-fnack-plugins clean checkout of `main` (HEAD `4f0bc4b`). NOTE: the fnack-plugins
-checkout advanced during this session (canonical manifests now declare fuller
-permission sets); re-verify before executing.
+Sources: **live GitHub** `tajanthind/fnack` `main` @ `b07916be` (v0.3.21,
+security-enforced-permissions + secret-at-rest merged, PR #42) and
+`tajanthind/fnack-plugins` `main` @ `4f0bc4b`, fetched read-only via the GitHub
+API on 2026-09-04. The up-to-date author guide is pinned at
+`reference/AUTHORING.md` (fnack main commit `e899848cdd`).
 
-## Plugin API (fnack origin/main v0.3.1)
+> Correction note: an earlier version of this audit was grounded on the LOCAL
+> clone's stale `origin/main` (fnack v0.3.1 @ 4962657). Live `main` is
+> v0.3.21 and materially newer — permissions are enforced, the manifest now
+> supports `capabilities` and `actions`, and `fnack.plugin_api` exists. The
+> findings below are the corrected, live-main facts.
 
-- `plugins/base.py`: `PluginBase(ABC)` exists. `PluginManifest` dataclass has
-  exactly: id, name, version, type, api_version, entry_point, min_core_version,
-  author, description, homepage, permissions, settings_schema, ui, dependencies,
-  trust_level. **No `actions`, no `capabilities` fields** — an unknown JSON key
-  raises `TypeError` (`PluginManifest(**raw)`), so manifests carrying
-  `capabilities`/`actions` FAIL to load on current core.
-- All 15 typed interfaces exist: ServerExtensionPlugin (`register_routes(self,
-  blueprint) -> None`), RecommendationPlugin (`recommend_for_artist`,
-  optional `recommend_similar_tracks(track_id)`), MetadataProviderPlugin,
-  DownloaderPlugin, FingerprintPlugin, ScanTriggerPlugin (`trigger_scan`,
-  optional `test_connection`), LibraryTaskPlugin, VPNPlugin, UIExtensionPlugin,
-  EventHookPlugin, LyricsProviderPlugin, StorageBackendPlugin, AuthProviderPlugin
-  (`authenticate(request_headers)`), LibrarySourcePlugin, ConflictResolverPlugin.
-- `plugins/context.py` facades: library, settings, events, http, fs, ui, jobs,
-  log — exactly the brief's list, nothing more.
-  - `LibraryContext`: get_track, get_album, get_artist, list_missing_tracks,
-    list_artists, list_albums(artist_id=None, limit=500), list_tracks(album_id=None,
-    limit=1000), get_setting/set_setting, get_api_key() -> str (`''` if unset),
-    update_track_status, mark_caution. All return plain dicts. **No
-    get_or_create_api_key()**, no search, no genres, no cover-art bytes/paths
-    (album dicts have `cover_url` only), no starred/ratings/playlists, no
-    music-folders, no scan trigger.
-  - `http`: plain `requests.Session()` with UA header only — **no default
-    timeout, no `network` permission enforcement**.
-  - `fs`: downloads_dir/music_dir from env; open_download_path gated by
-    `filesystem:downloads`; open_data_path unrestricted.
-  - `log`: `logging.getLogger("fnack.plugin.<id>")`.
-- `plugins/__init__.py`: `PLUGIN_API_VERSION = "1.0.0"`; `VALID_TYPES` set of 15
-  type strings. **No capability registry, no `fnack.plugin_api` module, no
-  capability constants** (`server.extension` etc. are ad-hoc strings in
-  fnack-plugins manifests only; core ignores them / chokes on the key).
-- `plugins/manager.py`: manifest validation requires id/name/version/type/
-  api_version/entry_point; unknown `type` values → warning then load;
-  compatibility via `api_version` caret shorthand + `min_core_version`;
-  lifecycle on_load → on_enable → on_disable → on_unload +
-  on_settings_changed (settings REST only); `call_safe` wraps every plugin call
-  in gevent timeout (DEFAULT_HOOK_TIMEOUT=10s, DOWNLOAD=600s), catches
-  BaseException, auto-disables after 5 consecutive failures.
-- `plugins/api.py` + app.py wiring: server_extension blueprints register at
-  boot against a fresh Flask blueprint mounted at root (`/rest/*`); enable/
-  disable later does not (un)register routes. **No manifest `actions`
-  mechanism exists anywhere.**
-- Permission enforcement reality: only `FSContext.open_download_path` enforces
-  `filesystem:downloads`. `network`/`settings` are NOT enforced in code
-  (AUTHORING.md overstates). fnack-plugins README references
-  `plugins/essential.py` `ESSENTIAL_PLUGINS` — **does not exist on origin/main**.
+## Plugin API (live fnack main v0.3.21)
 
-## Canonical Subsonic plugin (fnack-plugins, current main)
+- `plugins/base.py`: `PluginBase(ABC)` exists. `PluginManifest` dataclass now
+  includes `actions: list[dict]` (imperative commands rendered in the settings
+  modal; each `id` maps to a snake_cased method invoked via
+  `POST /api/plugins/<id>/action/<action_id>`) AND `capabilities: list[str]`
+  (unknown IDs warn forward-compatibly; omitted → derived from `type`). Fields:
+  id, name, version, type, api_version, entry_point, min_core_version, author,
+  description, homepage, permissions, settings_schema, ui, actions,
+  dependencies, trust_level, capabilities.
+- All 15 typed interfaces exist (ServerExtensionPlugin.register_routes,
+  RecommendationPlugin.recommend_for_artist + recommend_similar_tracks, etc.).
+- `plugins/__init__.py`: `PLUGIN_API_VERSION = "1.0.0"`, `VALID_TYPES` set of
+  15. A **public SDK** exists at `fnack/plugin_api/` (`capabilities.py`,
+  `contracts.py`, `providers.py`, `errors.py`, `models.py`, `context.py`,
+  `events.py`, `version.py`) — `capabilities.py` exports constants incl.
+  `SERVER_EXTENSION = "server.extension"`, `ARTIST_INFO = "artist.info"`, etc.;
+  `contracts.py` is the single source of truth mapping capability → required
+  interface method(s), and the manager SKIPS (with a warning) any declared
+  capability the plugin doesn't implement.
+- `plugins/context.py`: 8 facades; every facade enforces DECLARED manifest
+  permissions via `PermissionChecker` (fail closed):
+  - `context.http` is a `requests.Session` **only if `network` declared —
+    otherwise it is `None`** (plugin gets a PermissionError-free hard None, so
+    any AudioMuse HTTP work REQUIRES the `network` permission).
+  - `context.settings.get/set/all` require `settings`.
+  - `context.library` read methods require `library:read`; write methods
+    (`set_setting`, `update_track_status`, `mark_caution`,
+    `get_or_create_api_key`, job ops) require `library:write`.
+  - `context.fs.open_download_path` requires `filesystem:downloads`;
+    `open_music_path` requires `filesystem:music`.
+  - Declared-but-unused permissions are surfaced as warnings (AUTHORING §2).
+- `LibraryContext` methods (live): get_track, get_album, get_artist,
+  list_missing_tracks, list_artists, list_albums, list_tracks, get_setting/
+  set_setting, get_api_key ('' if unset), **get_or_create_api_key** (generates
+  + persists via library:write), search_albums/search_tracks, get_album_info/
+  get_track_info, queue_lidarr_grab, list_download_jobs, cancel_download_job,
+  update_track_status, mark_caution, verify_audio_file,
+  verify_download_acoustid. Gaps for a full Subsonic server remain: no
+  cover-art bytes/paths (album dicts carry `cover_url` only), no genres/
+  starred/ratings/playlists, no local-library full-text search (the
+  search_* methods are live Deezer lookups), no music-folder concept.
+- Startup (app.py module-level init, inside `with app.app_context():`):
+  bundled plugins auto-install and are enabled by default EXCEPT
+  `auth_provider`; `plugin_manager.load_all(enabled_ids=…)`; then
+  server-extension blueprints are registered for every enabled provider in the
+  **capability registry** (`capability_registry.providers(SERVER_EXTENSION)`) —
+  only ENABLED plugins get `/rest/*` routes at boot. **An M2M API key is
+  auto-created at startup** (`LibraryContext(...).get_or_create_api_key()`),
+  so after first boot `get_api_key()` returns a real key (also surfaced via
+  `/api/settings`); fnack's zero-auth model applies to human-facing pages —
+  server-extension APIs are key-gated once the key exists.
+- `plugins/manager.py`: `call_safe` gevent-timeout wrapper, auto-disable after
+  5 consecutive failures (DEFAULT_HOOK_TIMEOUT 10s / download 600s); plugin
+  lifecycle on_load/on_enable/on_disable/on_unload/on_settings_changed.
+- `plugins/secret_store.py`: Fernet encrypt-at-rest for manifest `type:
+  "secret"` settings; startup backfill encrypts legacy plaintext rows.
 
-- plugin.json (verified directly this session): id `fnack.subsonic`, name
-  "Subsonic API", version 1.0.0, type [server_extension], api_version ^1.0,
-  min_core_version 0.2.0, permissions **[settings, library:read,
-  filesystem:music]**, settings_schema [{enabled boolean default false}],
-  trust_level official, capabilities **[server.extension]**. The `capabilities`
-  key would TypeError under current core's strict manifest parser (drift —
-  vendored mirror in fnack has permissions [settings] and NO capabilities key
-  and is what core actually loads today).
+## Canonical + bundled Subsonic plugin (live, both now in sync)
+
+- Canonical `fnack-plugins/plugins/fnack.subsonic/` == vendored
+  `fnack/bundled_plugins/fnack.subsonic/` (verified byte-identical plugin.py
+  on live main; the earlier local-clone drift is gone). Manifest v1.0.0:
+  type [server_extension], api_version ^1.0, min_core_version 0.2.0,
+  permissions **[settings, library:read, filesystem:music]**, settings_schema
+  [{enabled bool default false}], capabilities **[server.extension]**. This
+  manifest LOADS fine on live core (capabilities supported).
 - plugin.py (151 lines, `SubsonicPlugin(ServerExtensionPlugin)`): JSON-only
-  responses; no XML. Envelope `{subsonic-response:{status,version:"1.16.1",…}}`;
-  errors always HTTP 200 + `status:"failed"` + error code/message. Auth
-  `_auth_ok`: `context.library.get_api_key()`; empty key → open (zero-auth);
-  else `p == key` or `t == md5(key+salt)` (no u/c/v/f checks, no enc: hex, no
-  apiKey param). Routes registered for GET+POST on both `/rest/<name>` and
-  `/rest/<name>.view` — unconditionally (enabled flag not gating, noted in
-  code comment as pre-existing behavior).
-- Endpoints today: ping, getLicense (returns type fnack + validUntil), getArtists
-  (ar- ids, letter-bucketed index), getAlbumList2 (al- ids, songCount 0),
-  getAlbum (songs tr-), getSong, stream (raw send_file, no Range/transcode,
-  mimetype map for flac/opus/ogg/mp3/m4a/aac/wav), getCoverArt (always error 70
-  "not yet indexed"), getScanStatus + startScan (static stub). Missing: search3,
-  getIndexes, getMusicFolders, getArtist, getSimilarSongs/2, getArtistInfo/2,
-  download, XML, genres, playlists, scrobble.
-- Errors used: 40 wrong auth, 70 not found/cover. Malformed id (non-int after
-  prefix) → uncaught ValueError → 500.
-- Bundled mirror vs canonical drift (plugin.py): canonical removes
-  on_load/_render_settings_tab ("settings via standard schema modal; custom
-  settings_tab card retired"), bundled still has them. Manifest drift: bundled =
-  permissions [settings], no capabilities key.
+  responses; no XML. Envelope `{"subsonic-response":{status:"ok|failed",
+  version:"1.16.1",…}}`; errors HTTP 200 + status failed + code/message. Auth
+  `_auth_ok`: `context.library.get_api_key()`; if empty → open (zero-auth);
+  else accept `p == key` or `t == md5(key+salt)` (no u/c/v/f/apiKey checks,
+  no enc: hex). Routes registered for GET+POST on `/rest/<name>` and
+  `/rest/<name>.view` — at boot only if the plugin is enabled (capability
+  registry); the manifest `enabled` checkbox is stored but NOT consulted by
+  the plugin code.
+- Endpoints today: ping, getLicense, getArtists (ar- ids, letter-bucketed),
+  getAlbumList2 (al-, songCount 0), getAlbum (songs tr-), getSong, stream
+  (raw send_file, no Range/transcode; flac/opus/ogg/mp3/m4a/aac/wav),
+  getCoverArt (always error 70 "not yet indexed"), getScanStatus + startScan
+  (static stubs). Missing: search3, getIndexes, getMusicFolders, getArtist,
+  getSimilarSongs/2, getArtistInfo/2, download, XML, genres, playlists.
+- Errors used: 40 wrong auth, 70 not found/cover. Malformed id → uncaught
+  ValueError → 500 (fix planned in the upgrade).
 
-## Release / test conventions
+## Release / test conventions (live)
 
-- fnack-plugins canonical; package via `python3 package_plugins.py` (zips each
-  plugin → dist/, sha256, regenerates index.json; download URLs point at GitHub
-  release `v<version>`); parity guard `python3 tests/test_manifest_index_parity.py`
-  (currently passes: 18 plugins). No CI workflows in fnack-plugins; fnack CI
-  runs `tests/run_smoke_test.py` then builds/publishes ghcr image on main + tags.
-- Release workflow (fnack wayfinder "Decisions so far"): edit in fnack-plugins →
-  package_plugins.py → commit/push fnack-plugins → vendor files into
-  fnack/bundled_plugins/ → tag core release. Do not push directly to fnack main;
-  use branches + PRs (fnack's own plugin-architecture flow merged via PRs).
+- fnack-plugins canonical → `package_plugins.py` (zip+sha256+index.json) →
+  parity guard `tests/test_manifest_index_parity.py` → commit/push → vendor
+  into fnack `bundled_plugins/` → tag core release. fnack tests:
+  `tests/run_smoke_test.py` + architecture tests under `tests/architecture/`
+  (e.g. test_phase3_completion, test_essential_plugins). No lint config in
+  fnack-plugins; fnack CI runs smoke test then docker publish.
+- `plugins/essential.py` (live) is the authoritative Docker-essential set:
+  {fnack.spotiflac, fnack.ytdlp, fnack.spotify, fnack.deezer-batch} —
+  fnack.subsonic is NOT essential; it ships as a marketplace-installable
+  official plugin (vendored mirror still present for older images/installs).
 
-## Brief assumption vs reality (highlights)
+## Brief assumption vs reality (live main v0.3.21 — corrected)
 
-- §3 facade list: matches. ServerExtensionPlugin: matches.
-- §4/§21/§22 `actions`/`capabilities` in manifest + capability registry +
-  capability constants: **do not exist in core**. Manifests with those keys fail
-  to load on v0.3.1. Forward-compat warnings exist only for unknown `type`
-  strings.
-- §9 get_or_create_api_key(): **absent** — only get_api_key() exists.
-- §5 enforced permissions: only filesystem:downloads; network/settings declared
-  but unenforced (AUTHORING overstates); unused-permission warnings: absent.
-- §10 library facade: get/list methods match; search/cover-art-bytes/genres/
-  scan/all-tracks enumeration absent (API gaps).
+- §3 facades + ServerExtensionPlugin: matches.
+- §4/§21/§22 `actions`, `capabilities`, capability registry + constants:
+  **now supported** (manifest fields, SERVER_EXTENSION constant, contract
+  validation, actions dispatch endpoint). The brief's model is current.
+- §5 permission enforcement: **now real and fail-closed** (network → http
+  exists; settings; library:read/write; filesystem:*). Declared-but-unused
+  warned.
+- §9 `get_or_create_api_key()`: **exists** (library:write). fnack auto-creates
+  the key at startup, so server-extension APIs are key-gated after first boot.
+- §10 library facade: read/list methods match; search_albums/search_tracks are
+  Deezer live searches, not local-library search; cover-art bytes, genres,
+  scan-trigger and all-tracks enumeration still absent (API gaps).
+- §14 secrets: `type: "secret"` settings are Fernet-encrypted at rest.

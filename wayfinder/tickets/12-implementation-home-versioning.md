@@ -25,24 +25,32 @@ plan.
 
 ## Resolution
 
-RESOLVED from audit (ticket 01) + fnack ecosystem conventions + brief §29/§30:
+RESOLVED from the corrected live audit (ticket 01) + fnack ecosystem
+conventions + brief §29/§30:
 
 - **Canonical edit target**: `tajanthind/fnack-plugins` →
-  `plugins/fnack.subsonic/` (the single source of truth for plugin code,
-  versioning, and index.json metadata).
+  `plugins/fnack.subsonic/` (single source of truth for plugin code,
+  versioning, index.json). On live main the vendored
+  `fnack/bundled_plugins/fnack.subsonic/` mirror is currently in sync with
+  canonical (no drift) — keep it that way.
 - **Workflow** (recorded, not executed from this tracker): edit in
-  fnack-plugins on a focused branch → run `python3 package_plugins.py`
-  (zips + sha256 + regenerates index.json) → run the parity guard
-  `python3 tests/test_manifest_index_parity.py` → commit/push + PR in
-  fnack-plugins → vendor the updated plugin files into
-  `fnack/bundled_plugins/fnack.subsonic/` → tag the core fnack release.
-  fnack core must be able to load the shipped manifest (see ticket 04:
-  either drop the `capabilities` key or land the tolerant parser first).
-- **Versioning**: keep `api_version: ^1.0` (fnack plugin API 1.x unchanged);
-  bump the plugin version from 1.0.0 per fnack-plugins conventions (the new
-  feature surface warrants a minor+ bump; the exact number follows repo
-  convention at execution time). `min_core_version`: only raise if the
-  implementation uses a core API introduced after 0.3.1 — the cover-art core
-  addition (ticket 16) is the only candidate; otherwise keep 0.2.0.
-- **Do not push directly to fnack main** — use branches/PRs (fnack's
-  established contribution model per its wayfinder docs).
+  fnack-plugins on a focused branch → `python3 package_plugins.py` (zip +
+  sha256 + index.json) → parity guard `python3
+  tests/test_manifest_index_parity.py` → commit/push + PR in fnack-plugins →
+  vendor the updated plugin files into `fnack/bundled_plugins/fnack.subsonic/`
+  → tag the core fnack release. fnack core v0.3.21 loads the current manifest
+  fine (`capabilities` + `actions` are supported — no parser workarounds
+  needed, unlike the stale v0.3.1 core).
+- **Versioning**: keep `api_version: ^1.0` (fnack plugin API 1.x unchanged —
+  PLUGIN_API_VERSION is still 1.0.0); bump the plugin version from 1.0.0 per
+  fnack-plugins conventions (minor+ for the new feature surface; exact number
+  chosen at execution time). `min_core_version`: current value 0.2.0 predates
+  permission enforcement and capabilities/actions — the upgraded plugin
+  depends on core ≥ the release that introduced enforced permissions,
+  secret-at-rest, and the capability registry, so raise it to the fnack core
+  version that ships with those (v0.3.21-era or later), matching the repo's
+  conventions at execution.
+- **Do not push directly to fnack main** — branches + PRs (fnack's
+  established model). fnack.subsonic is marketplace-official, NOT in
+  Docker-essential set (plugins/essential.py) — no essential-list change
+  needed; the bundled mirror stays for image compat.

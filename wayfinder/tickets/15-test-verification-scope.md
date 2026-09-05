@@ -53,8 +53,13 @@ implementation session (nothing executes from this tracker):
   response), no unhandled exceptions, no auto-disable spiral.
 - **Settings/permissions/architecture**: defaults (enabled true,
   audiomuse_enabled false, audiomuse_base_url ""), secret never logged,
-  settings via context.settings, permissions settings+network only, and a
-  guard asserting the plugin never imports models/db/app/services directly.
+  settings via context.settings, permissions settings+library:read+network
+  only, and guards asserting the plugin never imports models/db/app/services
+  directly. Because live fnack core v0.3.21 ENFORCES permissions, the
+  permission tests become meaningful runtime assertions: without `network`
+  declared, `context.http is None`; calling an undeclared facade raises
+  PermissionError; declared-but-unused permissions produce a warning. fnack
+  also has `tests/architecture/` conventions to mirror where useful.
 - **Live smoke procedure** (documented, run in the user's real deployment):
   curl the §25 endpoint list against a running fnack; verify real stream
   playback with a Subsonic client where practical; AudioMuse-off, -on

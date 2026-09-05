@@ -31,18 +31,22 @@ marketplace enable/disable lifecycle expectations found in the audit (ticket
 
 ## Resolution
 
-RESOLVED by user decision: **gate on `enabled` and flip the default to
-`true`**. The upgraded plugin's `settings_schema` `enabled` boolean (default
-now `true`) becomes behaviorally meaningful — when the plugin is disabled in
-the fnack plugins UI, `/rest/*` does not serve (either routes are not
-registered at boot or requests return a disabled error), and a fresh install
-works out of the box. This changes the pre-existing quirk where the checkbox
-was cosmetic and routes answered regardless; existing installs that stored
-`enabled=false` under the old cosmetic semantics must be migrated on upgrade
-(read as enabled unless the user explicitly disabled after upgrade — an
-implementation detail for ticket 12's session). AudioMuse remains independently
-default-off via `audiomuse_enabled` (ticket 08) — gating the Subsonic server
-and gating AudioMuse are separate toggles. Core note (ticket 01): fnack core
-already skips route registration for disabled ServerExtensionPlugins at boot,
-so this is largely a manifest-default + doc change plus verifying the
-marketplace lifecycle honors it.
+RESOLVED by user decision + corrected live audit (ticket 01): **gate on
+`enabled`, default `true`** for the manifest setting.
+
+Corrected mechanics on live fnack main v0.3.21:
+- fnack already only registers server-extension `/rest/*` routes at boot for
+  ENABLED plugins (capability registry: `providers(SERVER_EXTENSION)`); the
+  per-plugin "enable" toggle in Settings → Plugins is the real gate, and
+  bundled/official plugins auto-install enabled (except auth_provider).
+- The plugin's `settings_schema` `enabled` boolean (default false) is a
+  SEPARATE stored setting the plugin code currently never reads — that's the
+  cosmetic quirk. Decision: flip its default to `true` AND make the plugin
+  consult it (serve /rest only when the plugin is manager-enabled AND this
+  setting is true), so a fresh install works out of the box and the two
+  toggles don't contradict.
+- Existing installs that stored `enabled=false` under the old cosmetic
+  semantics must be migrated on upgrade (read as enabled unless the user
+  explicitly disables after upgrade).
+- AudioMuse stays independently default-off via `audiomuse_enabled` (ticket
+  08) — Subsonic-server gating and AudioMuse gating are separate toggles.

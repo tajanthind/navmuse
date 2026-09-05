@@ -50,27 +50,34 @@ Specifically:
 ## Resolution
 
 RESOLVED (research) — full findings in
-`research/01-fnack-architecture-audit.md`. Highlights that drive this map:
+`research/01-fnack-architecture-audit.md`. **Corrected after pulling the live
+AUTHORING.md** (fnack `main` is v0.3.21 @ `b07916be`, not the stale local
+clone v0.3.1): highlights that drive this map:
 
-- fnack core v0.3.1 (`origin/main` @ 4962657) matches the brief's §3 surface:
-  `PluginBase(ABC)`, all 15 typed interfaces, `ServerExtensionPlugin.register_routes`,
-  and the 8 `PluginContext` facades — but **no capability registry, no
-  `capabilities`/`actions` manifest fields, and no `fnack.plugin_api` module**.
-  `PluginManifest(**raw)` raises `TypeError` on unknown keys, so the canonical
-  fnack-plugins manifests (which carry `capabilities`) cannot load under current
-  core — only the vendored mirror (no `capabilities` key) loads. This is live
-  ecosystem drift (marketplace ahead of core) and must be resolved by the
-  implementation session (see ticket 04).
-- `LibraryContext` has get_api_key() (no get_or_create_api_key), the
-  get/list methods the brief lists, but **no search, no genres, no cover-art
-  bytes, no scan trigger, no all-tracks enumeration** → those are real API gaps.
-- Permission enforcement is partial: only `filesystem:downloads` is enforced;
-  `network`/`settings` are declared-but-unenforced (AUTHORING.md overstates).
-- Canonical `fnack.subsonic` today: JSON-only, ~10 first-cut endpoints
+- fnack core v0.3.21 matches the brief §3 surface AND the §4/§21/§22 model:
+  `PluginManifest` has real `actions` + `capabilities` fields; a public SDK
+  `fnack/plugin_api/` exists (capabilities.py exports SERVER_EXTENSION etc.,
+  contracts.py validates declared capabilities → skip-with-warning); the
+  manager dispatches manifest actions via `POST /api/plugins/<id>/action/
+  <action_id>`.
+- Permissions ARE enforced and fail-closed: `context.http` is None unless
+  `network` declared; `context.settings` requires `settings`; library reads
+  need `library:read`, writes `library:write`; fs gates exist. Declared-but-
+  unused permissions are warned. (The earlier v0.3.1 audit's "not enforced"
+  finding is obsolete.)
+- `LibraryContext` (live): get_api_key() AND get_or_create_api_key() (via
+  library:write), the §10 get/list methods, search_albums/search_tracks
+  (Deezer live), verify helpers, job ops. Real API gaps remain: no cover-art
+  bytes/paths (only cover_url), no local-library full-text search, no genres,
+  no starred/ratings/playlists/music-folders, no scan trigger.
+- Canonical `fnack.subsonic` (fnack-plugins @ 4f0bc4b) == bundled mirror on
+  live main (drift gone): JSON-only first-cut endpoints
   (ping/getLicense/getArtists/getAlbumList2/getAlbum/getSong/stream/getCoverArt/
-  getScanStatus/startScan), `ar-/al-/tr-` ids, zero-auth-open when no key, raw
-  streaming, cover art always error 70, no search3/similarSongs/artistInfo/
-  download/XML. Routes registered unconditionally at boot for enabled plugins.
-- Release flow: fnack-plugins canonical → package_plugins.py → commit/push →
-  vendor into fnack/bundled_plugins → tag core release; tests: plain python
-  parity test in fnack-plugins, `tests/run_smoke_test.py` in fnack.
+  getScanStatus/startScan), `ar-/al-/tr-` ids, permissions [settings,
+  library:read, filesystem:music], capabilities [server.extension]; no
+  search3/similarSongs/artistInfo/download/XML. Zero-auth-open only when no
+  M2M key exists — and fnack now auto-creates the key at startup.
+- Release flow: fnack-plugins canonical → package_plugins.py → parity guard →
+  commit/push → vendor into fnack bundled_plugins → tag core release; fnack
+  tests: tests/run_smoke_test.py + tests/architecture/. `plugins/essential.py`
+  (live) excludes fnack.subsonic (marketplace-official, not Docker-essential).

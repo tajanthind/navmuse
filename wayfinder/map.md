@@ -34,12 +34,18 @@ the `fnack` bundled mirror) can run the brief without re-deciding anything.
   are READ-ONLY ground truth for sessions here: the user constraint is *do not
   make any changes to fnack or fnack plugins* — navmuse hosts only the chart,
   findings, and decisions; the feature executes later against the code repos.
-- Ground truth checkouts: `/home/tajanthind/fnack` (plugin API + bundled
-  mirror; local branch `fix/metadata-chain-fallback`, `origin/main` has the
-  released plugin architecture) and `/home/tajanthind/fnack-plugins` (clean
-  `main`). The brief is self-contained but repositories are authoritative over
-  its assumptions; the Subsonic/OpenSubsonic specs are authoritative over wire
+- Ground truth: **live GitHub is authoritative.** fnack `main` is v0.3.21 (@
+  `b07916be`, security-enforced permissions + secret-at-rest merged); canonical
+  plugin source `tajanthind/fnack-plugins` `main` @ `4f0bc4b`; the up-to-date
+  plugin-authoring doc is pinned at `reference/AUTHORING.md` (fnack main
+  `e899848cdd`). The local checkouts under `/home/tajanthind/fnack` and
+  `/home/tajanthind/fnack-plugins` may lag live `main` — treat them as hints
+  only and re-verify against GitHub before executing. The brief is
+  self-contained but the live repositories are authoritative over its
+  assumptions; the Subsonic/OpenSubsonic specs are authoritative over wire
   behavior; AudioMuse-AI's running source is authoritative over its API.
+  (The first audit of this map used the stale local v0.3.1 clone; it was
+  corrected against live v0.3.21 — see research file 01.)
 - Standing preferences (from the brief, hard constraints): one plugin, no
   second Subsonic/AudioMuse plugin; AudioMuse never bundled/installed/run by
   fnack; `audiomuse_enabled` defaults `false` with zero network behavior when
@@ -55,13 +61,16 @@ the `fnack` bundled mirror) can run the brief without re-deciding anything.
 <!-- one line per resolved ticket; zoom the linked ticket for the detail -->
 
 - [Audit the current fnack plugin architecture + the bundled Subsonic plugin inventory](tickets/01-audit-fnack-architecture.md):
-  fnack core v0.3.1 matches the brief §3 surface (PluginBase, 15 typed
-  interfaces incl. ServerExtensionPlugin, 8 PluginContext facades) but has NO
-  capability registry / `capabilities`/`actions` manifest fields / plugin_api
-  module — canonical fnack-plugins manifests with `capabilities` don't load on
-  current core (vendored mirror does). Library facade lacks search, genres,
-  cover-art bytes, scan. Permission enforcement partial. Full findings in
-  `research/01-fnack-architecture-audit.md`.
+  **Corrected against live fnack main v0.3.21** (@ b07916be; the first audit
+  used a stale local clone at v0.3.1). Live core matches the brief's §3
+  surface (PluginBase, 15 typed interfaces incl. ServerExtensionPlugin, 8
+  PluginContext facades) AND the §4/§21/§22 model: real `capabilities` +
+  `actions` manifest fields, `fnack/plugin_api/` SDK (SERVER_EXTENSION
+  constant, contracts.py), permission enforcement that is fail-closed
+  (context.http is None without `network`), secret-at-rest (Fernet), and an
+  M2M key auto-created at startup. Library facade still lacks cover-art bytes,
+  local-library search, genres, playlists, scan. Canonical fnack-plugins ==
+  bundled mirror. Full findings in `research/01-fnack-architecture-audit.md`.
 - [Research the real AudioMuse-AI HTTP API](tickets/02-research-audiomuse-http-api.md):
   Flask server port 8000, root routes; primary similarity endpoint
   `GET /api/similar_tracks` (item_id OR title+artist, n default 50) → JSON
@@ -75,19 +84,21 @@ the `fnack` bundled mirror) can run the brief without re-deciding anything.
   `{"subsonic-response":…}`; errors HTTP 200 + status failed; find in
   `research/03-subsonic-wire-contract.md`.
 - [Decide capability + permission declarations for the upgraded Subsonic plugin](tickets/04-capability-permission-declarations.md):
-  remain a pure `server_extension`; no invented capability IDs; canonical
-  manifest must load on current core (drop `capabilities` key or land the
-  tolerant parser); declare permissions `settings` + `network` only (no
-  library:read/filesystem:music unless streaming moves behind context.fs).
+  keep `capabilities: ["server.extension"]` (real constant + contract on live
+  core — no invented IDs); declare permissions `settings`, `library:read`,
+  `network` (context.http — mandatory for AudioMuse), and `filesystem:music`
+  only if streaming moves behind context.fs; drop declared-but-unused perms;
+  no `library:write`.
 - [Decide the Subsonic ID strategy for the upgraded plugin](tickets/05-subsonic-id-strategy.md):
   preserve the prefixed-numeric contract (`ar-`/`al-`/`tr-` + stable numeric
   id) across every surface incl. coverArt/stream/download; no translation
   layer; malformed ids → error 70 not 500.
 - [Decide /rest authentication semantics for the upgraded plugin](tickets/06-rest-auth-semantics.md):
-  keep zero-auth-by-default (no key → open); when key set accept classic
-  `u`/`p` (plain + enc: hex) and `u`/`t`+`s` (md5(key+salt)) against fnack's
-  M2M key; `u` not identity-checked; no parallel auth DB; OS apiKey param maps
-  to the same key; OS error codes 41–44.
+  fnack auto-creates its M2M key at startup (v0.3.21), so /rest is normally
+  key-gated; plugin reads it via get_api_key() and accepts classic `u`/`p`
+  (plain + enc: hex) and `u`/`t`+`s` (md5(key+salt)) against it, plus the OS
+  `apiKey` param and error codes 41–44; `u` not identity-checked; no parallel
+  auth DB; zero-auth-open branch only before a key exists.
 - [Decide the response format scope (XML + JSON)](tickets/07-response-format-scope.md):
   implement **both XML and JSON** — XML default per classic spec, `f=json`
   honored; AudioMuse translation layer stays format-agnostic.
@@ -95,7 +106,8 @@ the `fnack` bundled mirror) can run the brief without re-deciding anything.
   add `audiomuse_enabled` (bool, false, "Enable AudioMuse-AI integration"),
   `audiomuse_base_url` (string, "", "AudioMuse-AI base URL"), and secret
   `audiomuse_api_key` (string, "", sent as Bearer when non-empty — the real
-  API uses an optional API token).
+  API uses an optional API token; `type: "secret"` is Fernet-encrypted at
+  rest on live fnack core).
 - [Decide similarity sourcing + translation + fallback for getSimilarSongs/getSimilarSongs2](tickets/09-similarity-sourcing-fallback.md):
   call `GET {base}/api/similar_tracks?item_id=<tr-id>&n=<count>` via
   context.http with Bearer when keyed; item_id = fnack Subsonic id with
@@ -107,21 +119,26 @@ the `fnack` bundled mirror) can run the brief without re-deciding anything.
   endpoint; getArtistInfo/2 return minimal valid response with fnack-side data
   only; document integration applies to similarity.
 - [Decide whether to add a "Test AudioMuse-AI connection" plugin action](tickets/11-connection-test-action.md):
-  no manifest `actions` mechanism exists in core → do not add the action in v1;
-  soft-fail + mock tests cover connection verification.
+  add the optional action — live fnack core v0.3.21 supports manifest
+  `actions` (`POST /api/plugins/<id>/action/<action_id>` → snake_cased method,
+  settings-modal button), so the connection test fits conventions; fails soft
+  when disabled/unreachable.
 - [Decide the implementation home + versioning + release workflow](tickets/12-implementation-home-versioning.md):
   canonical edit target fnack-plugins `plugins/fnack.subsonic/` → package +
   parity → PR → vendor into fnack bundled_plugins → tag core release; keep
   `api_version ^1.0`, bump plugin version per repo convention, raise
-  `min_core_version` only if ticket 16's core addition lands.
+  `min_core_version` to the v0.3.21-era release (enforced permissions +
+  capabilities/actions + secret-at-rest) that the upgraded plugin depends on.
 - [Decide the OpenSubsonic conformance level](tickets/13-opensubsonic-conformance-level.md):
   Standard OS v1 (user decision): classic contract + OS envelope attrs
   (`type`/`serverVersion`/`openSubsonic: true`), error codes 41–44, `apiKey`
   auth, `getOpenSubsonicExtensions`; defer formPost + extended OS-only fields.
 - [Decide the enabled-by-default + route-gating semantics of the Subsonic plugin](tickets/14-enabled-gating-semantics.md):
-  gate on `enabled`, default flips to `true` (user decision); routes don't
-  serve when disabled; migrate old cosmetic `false` installs on upgrade;
-  AudioMuse stays independent via `audiomuse_enabled`.
+  gate on `enabled`, default flips to `true` (user decision); fnack core only
+  registers /rest routes for manager-enabled plugins at boot, and the plugin's
+  own `enabled` setting (previously cosmetic) should gate serving too — flip
+  default to true and migrate old cosmetic-false installs; AudioMuse stays
+  independent via `audiomuse_enabled`.
 - [Decide the automated-test + verification scope](tickets/15-test-verification-scope.md):
   plain-python plugin tests (no pytest/network) in fnack-plugins conventions +
   XML/JSON fixtures from ticket 03 + mocked context.http per ticket 02;
@@ -152,3 +169,14 @@ answer, gisted above. A later execution session against
 (§1–§33) as an implementation order without re-deciding anything. Tracked
 deliberately from `navmuse`; fnack and fnack-plugins were treated as read-only
 ground truth throughout.
+
+> Addendum (2026-09-04): after the map was marked complete, the up-to-date
+> `docs/plugins/AUTHORING.md` was pulled from live fnack `main` (pinned at
+> `reference/AUTHORING.md`) and the architecture audit was re-verified against
+> live fnack `main` v0.3.21 (the first audit had used a stale local clone at
+> v0.3.1). Research file 01 and tickets 01/04/06/11/12/14/15 were corrected:
+> permissions are enforced fail-closed on live core, `capabilities` +
+> `actions` manifest support and the `fnack.plugin_api` SDK exist, secrets are
+> Fernet-encrypted at rest, and the M2M API key is auto-created at startup.
+> Re-verify against live `main` before executing — the local checkouts lag the
+> GitHub repos.

@@ -23,22 +23,27 @@ enforced, how the existing plugin.json is validated).
 
 ## Resolution
 
-RESOLVED from the audit (ticket 01) + brief §4/§5/§22:
+RESOLVED from the corrected live audit (ticket 01) + brief §4/§5/§22:
 
-- **Capabilities**: the brief's assumption of a capability registry with
-  exported constants is false on current core (v0.3.1) — no `capabilities`
-  manifest field, no `server.extension`/`similarity`/`recommendation`
-  constants, and a manifest carrying a `capabilities` key currently fails to
-  load (`PluginManifest(**raw)` TypeError). Decision: the upgraded plugin
-  remains a **pure `server_extension`** and the canonical manifest must be
-  made load-compatible with current core (align canonical fnack-plugins with
-  the loadable vendored mirror: no `capabilities` key — or land the small
-  forward-compat core parser change first). Do not invent capability IDs.
-- **Permissions**: declare only what the code actually uses: `settings`
-  (plugin + AudioMuse settings via `context.settings`) and `network`
-  (AudioMuse outbound HTTP via `context.http`). Drop the current canonical
-  `library:read` + `filesystem:music` unless streaming is moved behind
-  `context.fs` (today `stream` uses `send_file` on `local_path`, so no
-  filesystem permission is exercised; keep it that way). Note: core only
-  enforces `filesystem:downloads` today — declarations are the honest
-  contract, enforcement is a core-side concern (documented in ticket 01).
+- **Capabilities**: on live fnack main v0.3.21 the capability model the brief
+  describes is REAL: manifest `capabilities` field exists, `fnack/plugin_api/
+  capabilities.py` exports `SERVER_EXTENSION = "server.extension"` (and other
+  constants), the manager derives capabilities from `type` when omitted
+  (server_extension → server.extension), unknown IDs warn forward-compatibly,
+  and contracts.py validates that declared capabilities are implemented
+  (missing → skipped with warning, not a load failure). Decision: the upgraded
+  plugin keeps `capabilities: ["server.extension"]` — the existing canonical
+  manifest value, now backed by a real constant; do NOT invent new capability
+  IDs (there is no similarity/recommendation capability constant; a pure
+  server_extension stays the architecture's model for this feature).
+- **Permissions**: live core enforces them fail-closed. The upgraded plugin
+  must declare exactly what it uses: `settings` (settings_schema +
+  context.settings for the AudioMuse toggles/key), `library:read` (every
+  library read incl. get_api_key/list_*/get_*), `network` (context.http for
+  AudioMuse — **mandatory**: without it context.http is None and any AudioMuse
+  call would AttributeError), and `filesystem:music` ONLY if streaming moves
+  behind `context.fs.open_music_path`. Today the plugin streams raw via
+  send_file on `local_path`, so filesystem:music is currently
+  declared-but-unused (a warning on live core) — drop it or actually use the
+  fs facade. `library:write` is NOT needed (no get_or_create_api_key call
+  planned in the plugin — read-only auth).

@@ -24,19 +24,24 @@ is set, vs strict rejection).
 
 ## Resolution
 
-RESOLVED from audit (ticket 01) + spec (ticket 03) + brief §9:
+RESOLVED from the corrected live audit (ticket 01) + spec (ticket 03) + brief §9:
 
-- **Keep zero-auth-by-default.** When no fnack M2M API key is configured
-  (`context.library.get_api_key() == ""`), `/rest/*` stays open — matching
-  fnack's zero-required-auth model. (Existing behavior preserved.)
-- When a key IS configured, accept the classic schemes against that single key:
-  `u` + `p` (plain, and `enc:` hex per spec) OR `u` + `t`+`s` where
-  `token = md5(key + salt)`. `u` is accepted but not identity-checked (fnack
-  has no user accounts — document this); `v`/`c` accepted and ignored (or
-  minimally validated), `f` selects format.
-- Per the Standard OS v1 decision (ticket 13): also accept the OS `apiKey`
-  param mapping to the same fnack key; return OS error codes 41–44 for
-  unsupported/conflicting auth rather than only 40.
-- No parallel auth DB, no per-user subsystem — the fnack M2M key remains the
-  single credential (brief §9 hard constraint).
-- Plugin lifecycle: no auth state to clean up; nothing at import/startup.
+- **Zero-auth default nuance (live main)**: fnack v0.3.21 auto-creates the M2M
+  API key at startup (`get_or_create_api_key()` in app init) and surfaces it in
+  `/api/settings`. So after first boot a key normally EXISTS — the Subsonic
+  plugin's "open when no key" branch applies only to the pre-first-key state
+  or if the user clears the key. fnack itself stays zero-required-auth for
+  human-facing pages; the `/rest/*` surface is key-gated once the key exists.
+- The plugin reads the key via `context.library.get_api_key()` (library:read);
+  it should NOT call get_or_create_api_key (that needs library:write and would
+  mutate state — out of scope). Document that the client uses fnack's M2M key
+  as the Subsonic password.
+- Accept classic schemes against that key: `u` + `p` (plain, and `enc:` hex)
+  OR `u` + `t`+`s` where `token = md5(key + salt)`. `u` accepted but not
+  identity-checked (fnack has no user accounts); `v`/`c` accepted (ignored or
+  minimally validated); `f` selects format.
+- Per Standard OS v1 (ticket 13): also accept the OS `apiKey` param mapping to
+  the same fnack key; return OS error codes 41–44 for unsupported/conflicting
+  auth rather than only 40.
+- No parallel auth DB, no per-user subsystem (brief §9 hard constraint). No
+  auth state to clean up in plugin lifecycle.
