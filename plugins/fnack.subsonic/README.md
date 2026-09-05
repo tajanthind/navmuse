@@ -39,6 +39,22 @@ Zero-auth (open) only while no key is configured; fnack auto-creates a key at
 startup on current core, so `/rest/*` is normally key-gated. Error codes 40/70
 plus OS 43 (conflicting schemes); errors travel as HTTP 200 + failed status.
 
+### Username / password for Subsonic clients
+
+fnack has **no user accounts** — there is a single M2M API key, and that key
+is the only credential `/rest/*` knows. Point any Subsonic app
+(Symfonium / DSub / Sublime Music / Tempo / …) at `http://<fnack-host>:4688/rest`
+and set:
+
+- **Username**: anything (it is accepted but not checked — e.g. `fnack`).
+- **Password**: fnack's M2M API key — read it from fnack's settings
+  (`GET /api/settings` → `api_key`, or the Settings page).
+- **Protocol**: Subsonic (OpenSubsonic is supported too); **HTTP** or HTTPS.
+
+Clients that offer token auth (`t`/`s`) also work against the same key.
+If the key is ever cleared, the API falls back to open (fnack's zero-auth
+default) until the next key is generated.
+
 ## AudioMuse-AI settings
 
 | Key | Type | Default | Meaning |
