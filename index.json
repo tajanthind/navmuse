@@ -1,0 +1,59 @@
+{
+  "name": "navmuse plugins",
+  "updated_at": "2026-09-05T02:43:58.548789+00:00",
+  "plugins": [
+    {
+      "id": "fnack.subsonic",
+      "name": "Subsonic API",
+      "latest_version": "1.1.0",
+      "type": [
+        "server_extension"
+      ],
+      "description": "Exposes fnack's library as a Subsonic/OpenSubsonic server (Symfonium/DSub/Sublime Music). XML+JSON, search3, stream/download, and optional AudioMuse-AI sonic similarity (default off). Auth via the fnack M2M API key.",
+      "author": "fnack",
+      "homepage": "",
+      "permissions": [
+        "settings",
+        "library:read",
+        "network"
+      ],
+      "trust_level": "official",
+      "capabilities": [
+        "server.extension"
+      ],
+      "settings_schema": [
+        {
+          "key": "enabled",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "audiomuse_enabled",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "key": "audiomuse_base_url",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "key": "audiomuse_api_key",
+          "type": "secret",
+          "default": ""
+        }
+      ],
+      "ui": {
+        "slots": []
+      },
+      "versions": {
+        "1.1.0": {
+          "download_url": "https://github.com/tajanthind/navmuse/releases/download/v1.1.0/fnack.subsonic.zip",
+          "sha256": "155517f11209c8b189e63a64679df90157033fde478d1cbad08174897ac20f65",
+          "min_core_version": "0.3.21",
+          "api_version": "^1.0"
+        }
+      }
+    }
+  ]
+}
