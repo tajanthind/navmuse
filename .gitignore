@@ -7,3 +7,6 @@ dist/
 build/
 *.egg-info/
 .venv/
+
+# Working briefs (planning input, not shipped)
+Brief_*.md
