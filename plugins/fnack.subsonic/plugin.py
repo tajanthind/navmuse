@@ -681,6 +681,17 @@ class SubsonicPlugin(ServerExtensionPlugin):
             tr = self._track(track_id)
             if not tr:
                 return self._fail(70, "Song not found")
+            # get_track() omits album/artist context (facade gap); the album
+            # scan carries it, so enrich before building the Child node.
+            if not tr.get("album_id"):
+                for row in self._all_tracks():
+                    if row["id"] == track_id:
+                        tr = {**tr, **{k: row[k] for k in
+                                        ("album_id", "artist_id",
+                                         "track_number", "disc_number",
+                                         "size_bytes", "is_downloaded")
+                                        if k in row}}
+                        break
             return self._ok("song", self._track_node(tr))
 
         @add("getMusicDirectory")
