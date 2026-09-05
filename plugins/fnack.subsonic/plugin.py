@@ -518,6 +518,18 @@ class SubsonicPlugin(ServerExtensionPlugin):
     def _track_artist(self, tr):
         return self._artist_name(tr.get("artist_id")) if tr else ""
 
+    def _enriched_track(self, track_id):
+        """get_track() omits album/artist context; the album scan carries it."""
+        tr = self._track(track_id)
+        if tr and not tr.get("album_id"):
+            for row in self._all_tracks():
+                if row["id"] == track_id:
+                    keys = ("album_id", "artist_id", "track_number",
+                            "disc_number", "size_bytes", "is_downloaded")
+                    tr = {**tr, **{k: row[k] for k in keys if k in row}}
+                    break
+        return tr
+
     def _resolve_similar(self, result, count):
         """AudioMuse rows -> fnack Subsonic <song> nodes (skip unknowns)."""
         songs = []
@@ -528,7 +540,7 @@ class SubsonicPlugin(ServerExtensionPlugin):
             if s.ref_id:
                 tid = _parse_id(s.ref_id, "tr")
                 if tid:
-                    tr = self._track(tid)
+                    tr = self._enriched_track(tid)
                     if tr:
                         node = self._track_node(tr)
             if node is None and s.title:
@@ -678,20 +690,9 @@ class SubsonicPlugin(ServerExtensionPlugin):
             track_id = _parse_id(request.values.get("id"), "tr")
             if track_id is None:
                 return self._fail(70, "Song not found")
-            tr = self._track(track_id)
+            tr = self._enriched_track(track_id)
             if not tr:
                 return self._fail(70, "Song not found")
-            # get_track() omits album/artist context (facade gap); the album
-            # scan carries it, so enrich before building the Child node.
-            if not tr.get("album_id"):
-                for row in self._all_tracks():
-                    if row["id"] == track_id:
-                        tr = {**tr, **{k: row[k] for k in
-                                        ("album_id", "artist_id",
-                                         "track_number", "disc_number",
-                                         "size_bytes", "is_downloaded")
-                                        if k in row}}
-                        break
             return self._ok("song", self._track_node(tr))
 
         @add("getMusicDirectory")

@@ -1,6 +1,6 @@
 {
   "name": "navmuse plugins",
-  "updated_at": "2026-09-05T02:50:29.994405+00:00",
+  "updated_at": "2026-09-05T02:52:01.471113+00:00",
   "plugins": [
     {
       "id": "fnack.subsonic",
@@ -49,7 +49,7 @@
       "versions": {
         "1.1.0": {
           "download_url": "https://github.com/tajanthind/navmuse/releases/download/v1.1.0/fnack.subsonic.zip",
-          "sha256": "b97d22ab60731d7c6bdeffb9956e180122c54527ecc69c626df874c51e9532e9",
+          "sha256": "560eaa01e57eb5ed491c831cdbfe87e350308e4373f45cced7139f480bcc7f3b",
           "min_core_version": "0.3.21",
           "api_version": "^1.0"
         }
